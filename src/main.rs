@@ -9,6 +9,7 @@ use axum::{
     Router,
 };
 use clap::Parser;
+use percent_encoding::percent_decode_str;
 use tokio::net::TcpListener;
 
 /// http 静态 mock 服务器.
@@ -55,7 +56,13 @@ async fn main() {
 }
 
 async fn serve(request: Request<Body>, dirs: Arc<Vec<PathBuf>>) -> Response {
-    let Some(rel) = normalize(request.uri().path()) else {
+    // 先做百分号解码, 再规范化路径.
+    // 解码必须在 normalize 之前: 既让 %E4%B8%AD 之类的编码文件名能命中,
+    // 又保证解码出的 `..` (%2e%2e) 仍会被 normalize 拦截, 不产生穿越.
+    let raw_path = request.uri().path();
+    let decoded = percent_decode_str(raw_path).decode_utf8_lossy();
+
+    let Some(rel) = normalize(&decoded) else {
         return StatusCode::NOT_FOUND.into_response();
     };
 
